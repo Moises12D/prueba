@@ -1,23 +1,29 @@
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
 import mysql.connector
+from mysql.connector import pooling # Importamos la herramienta de pooling
 import certifi
 import os
 
 app = Flask(__name__, template_folder="Templates", static_folder="Static")
 CORS(app)
 
+dbconfig = {
+    "host": os.environ.get("DB_HOST"),
+    "user": os.environ.get("DB_USER"),
+    "password": os.environ.get("DB_PASSWORD"),
+    "database": os.environ.get("DB_NAME", "inventario_db"),
+    "port": int(os.environ.get("DB_PORT", 4000)),
+    "ssl_ca": certifi.where(),
+    "ssl_verify_cert": True,
+    "ssl_verify_identity": True
+}
+
+conexion_pool = pooling.MySQLConnectionPool(pool_name="mypool", pool_size=5, **dbconfig)
+
+
 def conectar_db():
-    return mysql.connector.connect(
-        host=os.environ.get("DB_HOST"),
-        user=os.environ.get("DB_USER"),
-        password=os.environ.get("DB_PASSWORD"),
-        database=os.environ.get("DB_NAME", "inventario_db"),
-        port=int(os.environ.get("DB_PORT", 4000)),
-        ssl_ca=certifi.where(),
-        ssl_verify_cert=True,
-        ssl_verify_identity=True
-    )
+    return conexion_pool.get_connection()
 
 # Ruta para mostrar tu página HTML
 @app.route('/')

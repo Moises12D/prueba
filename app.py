@@ -30,12 +30,13 @@ def conectar_db():
 def inicio():
     return render_template('Index.html')
 
-# API: Obtener productos
+# API: Obtener productos (Ocultando los eliminados lógicamente)
 @app.route('/api/productos', methods=['GET'])
 def obtener_productos():
     conn = conectar_db()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM productos ORDER BY fecha_ingreso DESC")
+    # Filtramos para que solo traiga los productos activos
+    cursor.execute("SELECT * FROM productos WHERE activo = TRUE ORDER BY fecha_ingreso DESC")
     productos = cursor.fetchall()
     conn.close()
     return jsonify(productos)
@@ -69,7 +70,7 @@ def agregar_producto():
     conn.close()
     return jsonify({"mensaje": "Producto agregado"}), 201
 
-# API: Eliminar producto
+# API: Vender producto
 @app.route('/api/productos/<int:id>/venta', methods=['PUT'])
 def vender_producto(id):
     data = request.json
@@ -102,6 +103,7 @@ def vender_producto(id):
         cursor.close()
         conn.close()
 
+# API: Ingreso de stock
 @app.route('/api/productos/<int:id>/ingreso', methods=['PUT'])
 def ingresar_producto(id):
     data = request.json
@@ -123,6 +125,21 @@ def ingresar_producto(id):
         
         conn.commit()
         return jsonify({"mensaje": "Ingreso registrado y guardado en el historial"}), 200
+    finally:
+        cursor.close()
+        conn.close()
+
+# API: Eliminar producto (Borrado Lógico)
+@app.route('/api/productos/<int:id>', methods=['DELETE'])
+def eliminar_producto(id):
+    conn = conectar_db()
+    cursor = conn.cursor()
+    
+    try:
+        # Solo cambiamos el estado a inactivo, conservando todo el historial en la BD
+        cursor.execute("UPDATE productos SET activo = FALSE WHERE id = %s", (id,))
+        conn.commit()
+        return jsonify({"mensaje": "Producto archivado correctamente"}), 200
     finally:
         cursor.close()
         conn.close()

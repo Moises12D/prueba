@@ -8,11 +8,13 @@ CORS(app)
 
 def conectar_db():
     return mysql.connector.connect(
-        host=os.environ.get("DB_HOST", "localhost"),
-        user=os.environ.get("DB_USER", "root"),
-        password=os.environ.get("DB_PASSWORD", ""),
-        database=os.environ.get("DB_NAME", "inventario_db"),
-        port=os.environ.get("DB_PORT", 3306)
+        host=os.environ.get("DB_HOST"),
+        user=os.environ.get("DB_USER"),
+        password=os.environ.get("DB_PASSWORD"),
+        database=os.environ.get("DB_NAME", "test"), # TiDB usa 'test' por defecto
+        port=os.environ.get("DB_PORT", 4000),       # TiDB usa el puerto 4000
+        ssl_verify_cert=True,
+        ssl_verify_identity=True
     )
 
 # Ruta para mostrar tu página HTML

@@ -70,16 +70,62 @@ def agregar_producto():
     return jsonify({"mensaje": "Producto agregado"}), 201
 
 # API: Eliminar producto
-@app.route('/api/productos/<int:id>', methods=['DELETE'])
-def eliminar_producto(id):
+@app.route('/api/productos/<int:id>/venta', methods=['PUT'])
+def vender_producto(id):
+    data = request.json
+    cantidad_vendida = int(data.get('cantidad', 1))
+    usuario_id = 1 # Usuario maestro de prueba por ahora
+    
+    conn = conectar_db()
+    cursor = conn.cursor(dictionary=True)
+    
+    try:
+        # Verificamos si hay suficiente stock antes de restar
+        cursor.execute("SELECT stock FROM productos WHERE id = %s", (id,))
+        producto = cursor.fetchone()
+        
+        if not producto or producto['stock'] < cantidad_vendida:
+            return jsonify({"error": "Stock insuficiente para realizar esta venta"}), 400
+            
+        # 1. Restamos el stock en inventario
+        cursor.execute("UPDATE productos SET stock = stock - %s WHERE id = %s", (cantidad_vendida, id))
+        
+        # 2. Guardamos el registro de la venta para tu historial
+        cursor.execute("""
+            INSERT INTO movimientos (producto_id, usuario_id, tipo, cantidad)
+            VALUES (%s, %s, 'venta', %s)
+        """, (id, usuario_id, cantidad_vendida))
+        
+        conn.commit()
+        return jsonify({"mensaje": "Venta registrada y guardada en el historial"}), 200
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/api/productos/<int:id>/ingreso', methods=['PUT'])
+def ingresar_producto(id):
+    data = request.json
+    cantidad_ingresada = int(data.get('cantidad', 1))
+    usuario_id = 1 # Usuario maestro de prueba por ahora
+    
     conn = conectar_db()
     cursor = conn.cursor()
-    # Eliminamos el historial de ese producto primero para evitar errores
-    cursor.execute("DELETE FROM movimientos WHERE producto_id = %s", (id,))
-    cursor.execute("DELETE FROM productos WHERE id = %s", (id,))
-    conn.commit()
-    conn.close()
-    return jsonify({"mensaje": "Producto eliminado"})
+    
+    try:
+        # 1. Sumamos el stock en inventario
+        cursor.execute("UPDATE productos SET stock = stock + %s WHERE id = %s", (cantidad_ingresada, id))
+        
+        # 2. Guardamos el registro del ingreso para tu historial
+        cursor.execute("""
+            INSERT INTO movimientos (producto_id, usuario_id, tipo, cantidad)
+            VALUES (%s, %s, 'ingreso', %s)
+        """, (id, usuario_id, cantidad_ingresada))
+        
+        conn.commit()
+        return jsonify({"mensaje": "Ingreso registrado y guardado en el historial"}), 200
+    finally:
+        cursor.close()
+        conn.close()
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

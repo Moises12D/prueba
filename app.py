@@ -1,7 +1,8 @@
-import os 
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
 import mysql.connector
+import certifi
+import os
 
 app = Flask(__name__, template_folder="Templates", static_folder="Static")
 CORS(app)
@@ -11,8 +12,9 @@ def conectar_db():
         host=os.environ.get("DB_HOST"),
         user=os.environ.get("DB_USER"),
         password=os.environ.get("DB_PASSWORD"),
-        database=os.environ.get("DB_NAME", "test"), # TiDB usa 'test' por defecto
-        port=os.environ.get("DB_PORT", 4000),       # TiDB usa el puerto 4000
+        database=os.environ.get("DB_NAME", "inventario_db"),
+        port=int(os.environ.get("DB_PORT", 4000)),
+        ssl_ca=certifi.where(),
         ssl_verify_cert=True,
         ssl_verify_identity=True
     )

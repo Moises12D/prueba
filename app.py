@@ -62,27 +62,31 @@ def obtener_usuarios():
     conn.close()
     return jsonify(usuarios)
 
-# API: Crear nuevo empleado
+# API: Crear nuevo usuario (maestro o empleado)
 @app.route('/api/usuarios', methods=['POST'])
 def crear_usuario():
     data = request.json
     nombre = data['nombre']
     clave = data['clave']
     comision = float(data.get('comision', 0))
+    # Recibimos el rol desde el frontend, por defecto 'empleado' si falla
+    rol = data.get('rol', 'empleado')
+    
+    # Pequeña validación de seguridad
+    if rol not in ['maestro', 'empleado']:
+        rol = 'empleado'
     
     conn = conectar_db()
     cursor = conn.cursor()
     
     try:
-        # Siempre se crean como 'empleado'
         cursor.execute("""
             INSERT INTO usuarios (nombre, clave, rol, comision)
-            VALUES (%s, %s, 'empleado', %s)
-        """, (nombre, clave, comision))
+            VALUES (%s, %s, %s, %s)
+        """, (nombre, clave, rol, comision))
         conn.commit()
         return jsonify({"mensaje": "Usuario creado exitosamente"}), 201
     except mysql.connector.IntegrityError:
-        # Se activa si el nombre de usuario ya existe en la BD
         return jsonify({"error": "El nombre de usuario ya está en uso"}), 400
     finally:
         cursor.close()

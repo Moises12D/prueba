@@ -225,5 +225,30 @@ def eliminar_producto(id):
         cursor.close()
         conn.close()
 
+# API: Obtener historial de movimientos
+@app.route('/api/historial', methods=['GET'])
+def obtener_historial():
+    conn = conectar_db()
+    cursor = conn.cursor(dictionary=True)
+    
+    # Hacemos un JOIN para traer el nombre del producto y del usuario en lugar de solo sus números de ID
+    query = """
+        SELECT m.id, m.fecha, m.tipo, m.cantidad, 
+               p.nombre AS producto, u.nombre AS usuario
+        FROM movimientos m
+        JOIN productos p ON m.producto_id = p.id
+        JOIN usuarios u ON m.usuario_id = u.id
+        ORDER BY m.fecha DESC
+    """
+    try:
+        cursor.execute(query)
+        movimientos = cursor.fetchall()
+        return jsonify(movimientos), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+        
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

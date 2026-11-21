@@ -253,6 +253,47 @@ def obtener_historial():
     finally:
         cursor.close()
         conn.close()
-        
+
+# API: Obtener cálculo de comisiones (Filtra si es empleado)
+@app.route('/api/comisiones', methods=['GET'])
+def obtener_comisiones():
+    # Recibimos quién está pidiendo la info
+    usuario_id = request.args.get('usuario_id')
+    rol = request.args.get('rol')
+    
+    conn = conectar_db()
+    cursor = conn.cursor(dictionary=True)
+    
+    base_query = """
+        SELECT 
+            u.id, 
+            u.nombre, 
+            u.comision,
+            COALESCE(SUM(m.cantidad * p.precio_venta), 0) AS total_ventas_dinero,
+            COALESCE(SUM(m.cantidad * p.precio_venta * (u.comision / 100)), 0) AS total_comision
+        FROM usuarios u
+        LEFT JOIN movimientos m ON u.id = m.usuario_id AND m.tipo = 'venta'
+        LEFT JOIN productos p ON m.producto_id = p.id
+        WHERE u.rol = 'empleado'
+    """
+    
+    try:
+        # Si es un empleado, le agregamos un filtro estricto para que solo vea su ID
+        if rol == 'empleado' and usuario_id:
+            query = base_query + " AND u.id = %s GROUP BY u.id, u.nombre, u.comision"
+            cursor.execute(query, (usuario_id,))
+        else:
+            # Si es maestro, ve a todos
+            query = base_query + " GROUP BY u.id, u.nombre, u.comision ORDER BY total_comision DESC"
+            cursor.execute(query)
+            
+        comisiones = cursor.fetchall()
+        return jsonify(comisiones), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

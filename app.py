@@ -239,9 +239,9 @@ def obtener_historial():
     conn = conectar_db()
     cursor = conn.cursor(dictionary=True)
     
-    # Consulta base
+    # EL ARREGLO: Convertimos m.fecha a texto (CHAR) para que no rompa el JSON
     base_query = """
-        SELECT m.id, m.fecha, m.tipo, m.cantidad, 
+        SELECT m.id, CAST(m.fecha AS CHAR) AS fecha, m.tipo, m.cantidad, 
                p.nombre AS producto, u.nombre AS usuario
         FROM movimientos m
         JOIN productos p ON m.producto_id = p.id
@@ -249,12 +249,10 @@ def obtener_historial():
     """
     
     try:
-        # Si es empleado, filtramos estrictamente por su ID
         if rol == 'empleado' and usuario_id:
             query = base_query + " WHERE m.usuario_id = %s ORDER BY m.fecha DESC"
             cursor.execute(query, (int(usuario_id),))
         else:
-            # Si es maestro, ve el historial general de todos
             query = base_query + " ORDER BY m.fecha DESC"
             cursor.execute(query)
             

@@ -238,13 +238,17 @@ def obtener_historial():
     conn = conectar_db()
     cursor = conn.cursor(dictionary=True)
     
-    # 1. Quitamos el CAST y dejamos m.fecha normal
+    # LEFT JOIN evita que los movimientos desaparezcan si se borra el producto o empleado
+    # DATE_FORMAT obliga a MySQL a enviar la fecha en formato texto
     base_query = """
-        SELECT m.id, m.fecha, m.tipo, m.cantidad, 
-               p.nombre AS producto, u.nombre AS usuario
+        SELECT m.id, 
+               DATE_FORMAT(m.fecha, '%Y-%m-%d %H:%i:%s') AS fecha, 
+               m.tipo, m.cantidad, 
+               COALESCE(p.nombre, 'Producto Eliminado') AS producto, 
+               COALESCE(u.nombre, 'Usuario Eliminado') AS usuario
         FROM movimientos m
-        JOIN productos p ON m.producto_id = p.id
-        JOIN usuarios u ON m.usuario_id = u.id
+        LEFT JOIN productos p ON m.producto_id = p.id
+        LEFT JOIN usuarios u ON m.usuario_id = u.id
     """
     
     try:
@@ -257,13 +261,16 @@ def obtener_historial():
             
         movimientos = cursor.fetchall()
         
-        # 2. LA SOLUCIÓN DEFINITIVA: Convertimos la fecha a texto de forma forzada en Python
+        # Respaldo forzado de seguridad
         for mov in movimientos:
-            mov['fecha'] = str(mov['fecha'])
-            
+            if mov['fecha'] is None:
+                mov['fecha'] = "Fecha desconocida"
+            else:
+                mov['fecha'] = str(mov['fecha'])
+                
         return jsonify(movimientos), 200
     except Exception as e:
-        print("Error en historial:", e) # Imprime el error en los logs de Render por si acaso
+        # Esto enviará el mensaje de error exacto al frontend en lugar de ocultarlo
         return jsonify({"error": str(e)}), 500
     finally:
         cursor.close()

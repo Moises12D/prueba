@@ -229,23 +229,35 @@ def eliminar_producto(id):
         cursor.close()
         conn.close()
 
-# API: Obtener historial de movimientos
+# API: Obtener historial de movimientos (Filtra si es empleado)
 @app.route('/api/historial', methods=['GET'])
 def obtener_historial():
+    # Recibimos quién está pidiendo la info
+    usuario_id = request.args.get('usuario_id')
+    rol = request.args.get('rol')
+    
     conn = conectar_db()
     cursor = conn.cursor(dictionary=True)
     
-    # Hacemos un JOIN para traer el nombre del producto y del usuario en lugar de solo sus números de ID
-    query = """
+    # Consulta base
+    base_query = """
         SELECT m.id, m.fecha, m.tipo, m.cantidad, 
                p.nombre AS producto, u.nombre AS usuario
         FROM movimientos m
         JOIN productos p ON m.producto_id = p.id
         JOIN usuarios u ON m.usuario_id = u.id
-        ORDER BY m.fecha DESC
     """
+    
     try:
-        cursor.execute(query)
+        # Si es empleado, filtramos estrictamente por su ID
+        if rol == 'empleado' and usuario_id:
+            query = base_query + " WHERE m.usuario_id = %s ORDER BY m.fecha DESC"
+            cursor.execute(query, (int(usuario_id),))
+        else:
+            # Si es maestro, ve el historial general de todos
+            query = base_query + " ORDER BY m.fecha DESC"
+            cursor.execute(query)
+            
         movimientos = cursor.fetchall()
         return jsonify(movimientos), 200
     except Exception as e:

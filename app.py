@@ -238,11 +238,10 @@ def obtener_historial():
     conn = conectar_db()
     cursor = conn.cursor(dictionary=True)
     
-    # LEFT JOIN evita que los movimientos desaparezcan si se borra el producto o empleado
-    # DATE_FORMAT obliga a MySQL a enviar la fecha en formato texto
+    # Quitamos DATE_FORMAT para no confundir a Python con los signos de porcentaje
     base_query = """
         SELECT m.id, 
-               DATE_FORMAT(m.fecha, '%Y-%m-%d %H:%i:%s') AS fecha, 
+               m.fecha, 
                m.tipo, m.cantidad, 
                COALESCE(p.nombre, 'Producto Eliminado') AS producto, 
                COALESCE(u.nombre, 'Usuario Eliminado') AS usuario
@@ -261,16 +260,15 @@ def obtener_historial():
             
         movimientos = cursor.fetchall()
         
-        # Respaldo forzado de seguridad
+        # Formateamos la fecha de forma 100% segura en Python
         for mov in movimientos:
-            if mov['fecha'] is None:
-                mov['fecha'] = "Fecha desconocida"
-            else:
+            if mov['fecha'] is not None:
                 mov['fecha'] = str(mov['fecha'])
+            else:
+                mov['fecha'] = ""
                 
         return jsonify(movimientos), 200
     except Exception as e:
-        # Esto enviará el mensaje de error exacto al frontend en lugar de ocultarlo
         return jsonify({"error": str(e)}), 500
     finally:
         cursor.close()

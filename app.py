@@ -232,16 +232,15 @@ def eliminar_producto(id):
 # API: Obtener historial de movimientos (Filtra si es empleado)
 @app.route('/api/historial', methods=['GET'])
 def obtener_historial():
-    # Recibimos quién está pidiendo la info
     usuario_id = request.args.get('usuario_id')
     rol = request.args.get('rol')
     
     conn = conectar_db()
     cursor = conn.cursor(dictionary=True)
     
-    # EL ARREGLO: Convertimos m.fecha a texto (CHAR) para que no rompa el JSON
+    # 1. Quitamos el CAST y dejamos m.fecha normal
     base_query = """
-        SELECT m.id, CAST(m.fecha AS CHAR) AS fecha, m.tipo, m.cantidad, 
+        SELECT m.id, m.fecha, m.tipo, m.cantidad, 
                p.nombre AS producto, u.nombre AS usuario
         FROM movimientos m
         JOIN productos p ON m.producto_id = p.id
@@ -257,8 +256,14 @@ def obtener_historial():
             cursor.execute(query)
             
         movimientos = cursor.fetchall()
+        
+        # 2. LA SOLUCIÓN DEFINITIVA: Convertimos la fecha a texto de forma forzada en Python
+        for mov in movimientos:
+            mov['fecha'] = str(mov['fecha'])
+            
         return jsonify(movimientos), 200
     except Exception as e:
+        print("Error en historial:", e) # Imprime el error en los logs de Render por si acaso
         return jsonify({"error": str(e)}), 500
     finally:
         cursor.close()

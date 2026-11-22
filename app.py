@@ -281,7 +281,7 @@ def obtener_comisiones():
         # Si es un empleado, le agregamos un filtro estricto para que solo vea su ID
         if rol == 'empleado' and usuario_id:
             query = base_query + " AND u.id = %s GROUP BY u.id, u.nombre, u.comision"
-            cursor.execute(query, (usuario_id,))
+            cursor.execute(query, (int(usuario_id),)) # <-- Convertimos a entero
         else:
             # Si es maestro, ve a todos
             query = base_query + " GROUP BY u.id, u.nombre, u.comision ORDER BY total_comision DESC"

@@ -24,11 +24,26 @@ conexion_pool = pooling.MySQLConnectionPool(pool_name="mypool", pool_size=5, **d
 def conectar_db():
     return conexion_pool.get_connection()
 
+# Asegura que exista la columna comision_pagada en la tabla movimientos
+def inicializar_columna_pagos():
+    conn = conectar_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("ALTER TABLE movimientos ADD COLUMN comision_pagada BOOLEAN DEFAULT FALSE")
+        conn.commit()
+    except mysql.connector.Error:
+        # Si ya existe la columna, continuamos normalmente
+        pass
+    finally:
+        cursor.close()
+        conn.close()
+
+inicializar_columna_pagos()
+
 # ==========================================
-# RUTAS DE AUTENTICACIÓN Y USUARIOS (NUEVAS)
+# RUTAS DE AUTENTICACIÓN Y USUARIOS
 # ==========================================
 
-# API: Inicio de sesión
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.json
@@ -37,11 +52,8 @@ def login():
     
     conn = conectar_db()
     cursor = conn.cursor(dictionary=True)
-    
-    # Buscamos si las credenciales coinciden exactamente
     cursor.execute("SELECT id, nombre, rol, comision FROM usuarios WHERE nombre = %s AND clave = %s", (usuario, clave))
     user_data = cursor.fetchone()
-    
     cursor.close()
     conn.close()
     
@@ -50,35 +62,29 @@ def login():
     else:
         return jsonify({"error": "Usuario o contraseña incorrectos"}), 401
 
-# API: Obtener todos los usuarios
 @app.route('/api/usuarios', methods=['GET'])
 def obtener_usuarios():
     conn = conectar_db()
     cursor = conn.cursor(dictionary=True)
-    # Traemos los usuarios ocultando la contraseña por seguridad básica
     cursor.execute("SELECT id, nombre, rol, comision FROM usuarios ORDER BY id ASC")
     usuarios = cursor.fetchall()
     cursor.close()
     conn.close()
     return jsonify(usuarios)
 
-# API: Crear nuevo usuario (maestro o empleado)
 @app.route('/api/usuarios', methods=['POST'])
 def crear_usuario():
     data = request.json
     nombre = data['nombre']
     clave = data['clave']
     comision = float(data.get('comision', 0))
-    # Recibimos el rol desde el frontend, por defecto 'empleado' si falla
     rol = data.get('rol', 'empleado')
     
-    # Pequeña validación de seguridad
     if rol not in ['maestro', 'empleado']:
         rol = 'empleado'
     
     conn = conectar_db()
     cursor = conn.cursor()
-    
     try:
         cursor.execute("""
             INSERT INTO usuarios (nombre, clave, rol, comision)
@@ -92,36 +98,28 @@ def crear_usuario():
         cursor.close()
         conn.close()
 
-# API: Eliminar empleado
 @app.route('/api/usuarios/<int:id>', methods=['DELETE'])
 def eliminar_usuario(id):
     conn = conectar_db()
     cursor = conn.cursor()
-    
     try:
-        # Medida de seguridad: impedimos borrar al rol maestro desde la API
         cursor.execute("DELETE FROM usuarios WHERE id = %s AND rol != 'maestro'", (id,))
         conn.commit()
-        
         if cursor.rowcount == 0:
             return jsonify({"error": "No se pudo eliminar (usuario no encontrado o protegido)"}), 403
-            
         return jsonify({"mensaje": "Empleado eliminado correctamente"}), 200
     finally:
         cursor.close()
         conn.close()
 
-
 # ==========================================
-# RUTAS DE INVENTARIO (LAS QUE YA TENÍAMOS)
+# RUTAS DE INVENTARIO
 # ==========================================
 
-# Ruta para mostrar tu página HTML principal
 @app.route('/')
 def inicio():
     return render_template('Index.html')
 
-# API: Obtener productos activos
 @app.route('/api/productos', methods=['GET'])
 def obtener_productos():
     conn = conectar_db()
@@ -132,7 +130,6 @@ def obtener_productos():
     conn.close()
     return jsonify(productos)
 
-# API: Agregar producto
 @app.route('/api/productos', methods=['POST'])
 def agregar_producto():
     data = request.json
@@ -162,7 +159,6 @@ def agregar_producto():
     conn.close()
     return jsonify({"mensaje": "Producto agregado"}), 201
 
-# API: Vender producto
 @app.route('/api/productos/<int:id>/venta', methods=['PUT'])
 def vender_producto(id):
     data = request.json
@@ -171,7 +167,6 @@ def vender_producto(id):
     
     conn = conectar_db()
     cursor = conn.cursor(dictionary=True)
-    
     try:
         cursor.execute("SELECT stock FROM productos WHERE id = %s", (id,))
         producto = cursor.fetchone()
@@ -182,8 +177,8 @@ def vender_producto(id):
         cursor.execute("UPDATE productos SET stock = stock - %s WHERE id = %s", (cantidad_vendida, id))
         
         cursor.execute("""
-            INSERT INTO movimientos (producto_id, usuario_id, tipo, cantidad)
-            VALUES (%s, %s, 'venta', %s)
+            INSERT INTO movimientos (producto_id, usuario_id, tipo, cantidad, comision_pagada)
+            VALUES (%s, %s, 'venta', %s, FALSE)
         """, (id, usuario_id, cantidad_vendida))
         
         conn.commit()
@@ -192,7 +187,6 @@ def vender_producto(id):
         cursor.close()
         conn.close()
 
-# API: Ingreso de stock
 @app.route('/api/productos/<int:id>/ingreso', methods=['PUT'])
 def ingresar_producto(id):
     data = request.json
@@ -201,7 +195,6 @@ def ingresar_producto(id):
     
     conn = conectar_db()
     cursor = conn.cursor()
-    
     try:
         cursor.execute("UPDATE productos SET stock = stock + %s WHERE id = %s", (cantidad_ingresada, id))
         
@@ -216,7 +209,6 @@ def ingresar_producto(id):
         cursor.close()
         conn.close()
 
-# API: Eliminar producto (Borrado Lógico)
 @app.route('/api/productos/<int:id>', methods=['DELETE'])
 def eliminar_producto(id):
     conn = conectar_db()
@@ -229,7 +221,30 @@ def eliminar_producto(id):
         cursor.close()
         conn.close()
 
-# API: Obtener historial de movimientos (Filtra si es empleado)
+@app.route('/api/productos/<int:id>', methods=['PUT'])
+def editar_producto(id):
+    data = request.json
+    conn = conectar_db()
+    cursor = conn.cursor()
+    try:
+        query = """
+            UPDATE productos 
+            SET nombre = %s, precio_compra = %s, precio_venta = %s 
+            WHERE id = %s
+        """
+        cursor.execute(query, (data['nombre'], data['precio_compra'], data['precio_venta'], id))
+        conn.commit()
+        return jsonify({"mensaje": "Producto actualizado"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+# ==========================================
+# HISTORIAL Y COMISIONES
+# ==========================================
+
 @app.route('/api/historial', methods=['GET'])
 def obtener_historial():
     usuario_id = request.args.get('usuario_id')
@@ -238,7 +253,6 @@ def obtener_historial():
     conn = conectar_db()
     cursor = conn.cursor(dictionary=True)
     
-    # Quitamos DATE_FORMAT para no confundir a Python con los signos de porcentaje
     base_query = """
         SELECT m.id, 
                m.fecha, 
@@ -259,13 +273,8 @@ def obtener_historial():
             cursor.execute(query)
             
         movimientos = cursor.fetchall()
-        
-        # Formateamos la fecha de forma 100% segura en Python
         for mov in movimientos:
-            if mov['fecha'] is not None:
-                mov['fecha'] = str(mov['fecha'])
-            else:
-                mov['fecha'] = ""
+            mov['fecha'] = str(mov['fecha']) if mov['fecha'] is not None else ""
                 
         return jsonify(movimientos), 200
     except Exception as e:
@@ -274,16 +283,15 @@ def obtener_historial():
         cursor.close()
         conn.close()
 
-# API: Obtener cálculo de comisiones (Filtra si es empleado)
 @app.route('/api/comisiones', methods=['GET'])
 def obtener_comisiones():
-    # Recibimos quién está pidiendo la info
     usuario_id = request.args.get('usuario_id')
     rol = request.args.get('rol')
     
     conn = conectar_db()
     cursor = conn.cursor(dictionary=True)
     
+    # Solo suma las ventas cuya comisión aún no ha sido pagada
     base_query = """
         SELECT 
             u.id, 
@@ -292,18 +300,19 @@ def obtener_comisiones():
             COALESCE(SUM(m.cantidad * p.precio_venta), 0) AS total_ventas_dinero,
             COALESCE(SUM(m.cantidad * p.precio_venta * (u.comision / 100)), 0) AS total_comision
         FROM usuarios u
-        LEFT JOIN movimientos m ON u.id = m.usuario_id AND m.tipo = 'venta'
+        LEFT JOIN movimientos m 
+            ON u.id = m.usuario_id 
+            AND m.tipo = 'venta' 
+            AND (m.comision_pagada = FALSE OR m.comision_pagada IS NULL)
         LEFT JOIN productos p ON m.producto_id = p.id
         WHERE u.rol = 'empleado'
     """
     
     try:
-        # Si es un empleado, le agregamos un filtro estricto para que solo vea su ID
         if rol == 'empleado' and usuario_id:
             query = base_query + " AND u.id = %s GROUP BY u.id, u.nombre, u.comision"
-            cursor.execute(query, (int(usuario_id),)) # <-- Convertimos a entero
+            cursor.execute(query, (int(usuario_id),))
         else:
-            # Si es maestro, ve a todos
             query = base_query + " GROUP BY u.id, u.nombre, u.comision ORDER BY total_comision DESC"
             cursor.execute(query)
             
@@ -315,26 +324,20 @@ def obtener_comisiones():
         cursor.close()
         conn.close()
 
-# API: Editar producto (Nombre, Precio Compra, Precio Venta)
-@app.route('/api/productos/<int:id>', methods=['PUT'])
-def editar_producto(id):
-    data = request.json
+# NUEVA RUTA: Marcar comisiones de un vendedor como pagadas y reiniciar su contador
+@app.route('/api/comisiones/<int:usuario_id>/pagar', methods=['PUT'])
+def pagar_comisiones(usuario_id):
     conn = conectar_db()
     cursor = conn.cursor()
     try:
-        query = """
-            UPDATE productos 
-            SET nombre = %s, precio_compra = %s, precio_venta = %s 
-            WHERE id = %s
-        """
-        cursor.execute(query, (data['nombre'], data['precio_compra'], data['precio_venta'], id))
+        cursor.execute("""
+            UPDATE movimientos 
+            SET comision_pagada = TRUE 
+            WHERE usuario_id = %s 
+              AND tipo = 'venta' 
+              AND (comision_pagada = FALSE OR comision_pagada IS NULL)
+        """, (usuario_id,))
         conn.commit()
-        return jsonify({"mensaje": "Producto actualizado"}), 200
+        return jsonify({"mensaje": "Comisiones marcadas como pagadas y contador reiniciado"}), 200
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-    finally:
-        cursor.close()
-        conn.close()
-        
-if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+        return jsonify({"error": str(e)}), 50

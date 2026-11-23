@@ -315,5 +315,26 @@ def obtener_comisiones():
         cursor.close()
         conn.close()
 
+# API: Editar producto (Nombre, Precio Compra, Precio Venta)
+@app.route('/api/productos/<int:id>', methods=['PUT'])
+def editar_producto(id):
+    data = request.json
+    conn = conectar_db()
+    cursor = conn.cursor()
+    try:
+        query = """
+            UPDATE productos 
+            SET nombre = %s, precio_compra = %s, precio_venta = %s 
+            WHERE id = %s
+        """
+        cursor.execute(query, (data['nombre'], data['precio_compra'], data['precio_venta'], id))
+        conn.commit()
+        return jsonify({"mensaje": "Producto actualizado"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+        
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

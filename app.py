@@ -291,14 +291,15 @@ def obtener_comisiones():
     conn = conectar_db()
     cursor = conn.cursor(dictionary=True)
     
-    # Solo suma las ventas cuya comisión aún no ha sido pagada
+    # Calcula la comisión sobre la ganancia real (precio_venta - precio_compra)
     base_query = """
         SELECT 
             u.id, 
             u.nombre, 
             u.comision,
             COALESCE(SUM(m.cantidad * p.precio_venta), 0) AS total_ventas_dinero,
-            COALESCE(SUM(m.cantidad * p.precio_venta * (u.comision / 100)), 0) AS total_comision
+            COALESCE(SUM(m.cantidad * GREATEST(p.precio_venta - p.precio_compra, 0)), 0) AS total_ganancia,
+            COALESCE(SUM(m.cantidad * GREATEST(p.precio_venta - p.precio_compra, 0) * (u.comision / 100)), 0) AS total_comision
         FROM usuarios u
         LEFT JOIN movimientos m 
             ON u.id = m.usuario_id 
@@ -340,4 +341,4 @@ def pagar_comisiones(usuario_id):
         conn.commit()
         return jsonify({"mensaje": "Comisiones marcadas como pagadas y contador reiniciado"}), 200
     except Exception as e:
-        return jsonify({"error": str(e)}), 50
+        return jsonify({"error": str(e)}), 500

@@ -133,31 +133,46 @@ def obtener_productos():
 @app.route('/api/productos', methods=['POST'])
 def agregar_producto():
     data = request.json
-    usuario_id = data.get('usuario_id', 1) 
+    usuario_id = data.get('usuario_id', 1)
+    codigo = data['codigo'].strip()
+    nombre = data['nombre'].strip()
     precio_compra = float(data['precio_compra'])
-    porcentaje = float(data['porcentaje_ganancia'])
-    precio_venta = precio_compra + (precio_compra * (porcentaje / 100))
+    porcentaje = float(data.get('porcentaje_ganancia', 0))
+    precio_venta = float(data.get('precio_venta', precio_compra + (precio_compra * (porcentaje / 100))))
     stock = int(data['stock'])
 
     conn = conectar_db()
-    cursor = conn.cursor()
-    
-    cursor.execute("""
-        INSERT INTO productos (codigo, nombre, precio_compra, porcentaje_ganancia_esperada, precio_venta, stock)
-        VALUES (%s, %s, %s, %s, %s, %s)
-    """, (data['codigo'], data['nombre'], precio_compra, porcentaje, precio_venta, stock))
-    
-    producto_id = cursor.lastrowid
+    cursor = conn.cursor(dictionary=True)
+    try:
+        # Verifica si ya existe un producto activo idéntico
+        # Verifica si ya existe un producto activo con el mismo código o nombre
+        cursor.execute("""
+            SELECT id FROM productos
+            WHERE activo = TRUE
+              AND (LOWER(TRIM(codigo)) = LOWER(%s) OR LOWER(TRIM(nombre)) = LOWER(%s))
+            LIMIT 1
+        """, (codigo, nombre))
 
-    cursor.execute("""
-        INSERT INTO movimientos (producto_id, usuario_id, tipo, cantidad)
-        VALUES (%s, %s, 'ingreso', %s)
-    """, (producto_id, usuario_id, stock))
+        if cursor.fetchone():
+            return jsonify({"error": "Ya existe un producto con ese mismo código o nombre. Usa 'Editar' o '+ Ingreso'."}), 400
+        
+        cursor.execute("""
+            INSERT INTO productos (codigo, nombre, precio_compra, porcentaje_ganancia_esperada, precio_venta, stock)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (codigo, nombre, precio_compra, porcentaje, precio_venta, stock))
 
-    conn.commit()
-    cursor.close()
-    conn.close()
-    return jsonify({"mensaje": "Producto agregado"}), 201
+        producto_id = cursor.lastrowid
+
+        cursor.execute("""
+            INSERT INTO movimientos (producto_id, usuario_id, tipo, cantidad)
+            VALUES (%s, %s, 'ingreso', %s)
+        """, (producto_id, usuario_id, stock))
+
+        conn.commit()
+        return jsonify({"mensaje": "Producto agregado"}), 201
+    finally:
+        cursor.close()
+        conn.close()
 
 @app.route('/api/productos/<int:id>/venta', methods=['PUT'])
 def vender_producto(id):
